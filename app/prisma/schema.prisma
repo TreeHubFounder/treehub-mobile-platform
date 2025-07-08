@@ -1,0 +1,582 @@
+// TreeHub - Tree Care Industry Platform Schema
+// Comprehensive database schema for tree care professionals, jobs, and equipment
+
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/treehub-mobile-platform/app/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  userType      UserType  @default(HOMEOWNER)
+  verified      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  professional    TreeProfessional?
+  company         TreeCompany?
+  jobApplications JobApplication[]
+  reviewsGiven    Review[]          @relation("ReviewerUser")
+  reviewsReceived Review[]          @relation("RevieweeUser")
+  messages        Message[]
+  leads           Lead[]
+}
+
+enum UserType {
+  PROFESSIONAL
+  COMPANY
+  HOMEOWNER
+}
+
+// ============================================
+// TREE PROFESSIONALS
+// ============================================
+
+model TreeProfessional {
+  id               String              @id @default(cuid())
+  userId           String              @unique
+  phone            String?
+  avatar           String?
+  bio              String?
+  experience       Int?                @default(0) // years
+  hourlyRate       Float?
+  rating           Float               @default(0)
+  totalJobs        Int                 @default(0)
+  verified         Boolean             @default(false)
+  insured          Boolean             @default(false)
+  availability     AvailabilityStatus  @default(AVAILABLE)
+  locationCity     String?
+  locationState    String?
+  locationZipCode  String?
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills           ProfessionalSkill[]
+  certifications   Certification[]
+  equipment        Equipment[]
+  portfolio        PortfolioItem[]
+  jobApplications  JobApplication[]
+  reviewsReceived  Review[]            @relation("RevieweeProfessional")
+  reviewsGiven     Review[]            @relation("ReviewerProfessional")
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  STORM_ONLY
+  SEASONAL
+  UNAVAILABLE
+}
+
+// ============================================
+// TREE COMPANIES
+// ============================================
+
+model TreeCompany {
+  id              String        @id @default(cuid())
+  userId          String        @unique
+  name            String
+  logo            String?
+  description     String?
+  size            CompanySize   @default(SMALL)
+  employees       Int?          @default(0)
+  founded         Int?
+  website         String?
+  verified        Boolean       @default(false)
+  rating          Float         @default(0)
+  totalJobs       Int           @default(0)
+  locationCity    String?
+  locationState   String?
+  locationZipCode String?
+  latitude        Float?
+  longitude       Float?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs            TreeJob[]
+  equipment       Equipment[]
+  licenses        License[]
+  reviewsReceived Review[]      @relation("RevieweeCompany")
+  reviewsGiven    Review[]      @relation("ReviewerCompany")
+  leads           Lead[]
+}
+
+enum CompanySize {
+  STARTUP
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+// ============================================
+// SKILLS & SPECIALIZATIONS
+// ============================================
+
+model ProfessionalSkill {
+  id               String           @id @default(cuid())
+  professionalId   String
+  skillType        TreeSkillType
+  name             String
+  level            SkillLevel       @default(BEGINNER)
+  verified         Boolean          @default(false)
+  yearsExperience  Int              @default(0)
+  createdAt        DateTime         @default(now())
+
+  professional     TreeProfessional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, skillType])
+}
+
+enum TreeSkillType {
+  CLIMBER
+  GROUNDWORK
+  CRANE_OPERATOR
+  PHC_TECH
+  STORM_RESPONSE
+  ARBORIST
+  BUCKET_TRUCK
+  STUMP_GRINDING
+  TREE_REMOVAL
+  PRUNING
+  CABLING
+  DIAGNOSIS
+  EMERGENCY_RESPONSE
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  EXPERT
+  MASTER
+}
+
+// ============================================
+// JOBS & MARKETPLACE
+// ============================================
+
+model TreeJob {
+  id                    String            @id @default(cuid())
+  title                 String
+  description           String
+  companyId             String
+  jobType               JobType           @default(CONTRACT)
+  urgency               JobUrgency        @default(NORMAL)
+  status                JobStatus         @default(OPEN)
+  skillsRequired        TreeSkillType[]
+  payType               PayType           @default(HOURLY)
+  payAmount             Float
+  overtimeRate          Float?
+  hazardPay             Float?
+  equipmentProvided     Boolean           @default(false)
+  equipmentRequired     String[]
+  safetyRequirements    String[]
+  certificationRequired String[]
+  weatherDependent      Boolean           @default(true)
+  
+  // Location
+  address               String
+  city                  String
+  state                 String
+  zipCode               String
+  latitude              Float?
+  longitude             Float?
+  
+  // Accessibility
+  gateWidth             Float?
+  powerLines            Boolean           @default(false)
+  slope                 SlopeType         @default(FLAT)
+  obstacles             String[]
+  parking               ParkingType       @default(STREET)
+  
+  // Dates
+  startDate             DateTime
+  endDate               DateTime?
+  postedAt              DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  company               TreeCompany       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  applications          JobApplication[]
+  reviews               Review[]
+  
+  @@index([status, urgency])
+  @@index([city, state])
+  @@index([skillsRequired])
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  STORM_EMERGENCY
+  SEASONAL
+  WEEKEND
+  ON_CALL
+}
+
+enum JobUrgency {
+  LOW
+  NORMAL
+  URGENT
+  EMERGENCY
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum PayType {
+  HOURLY
+  DAILY
+  PROJECT
+  PER_TREE
+}
+
+enum SlopeType {
+  FLAT
+  MODERATE
+  STEEP
+}
+
+enum ParkingType {
+  STREET
+  DRIVEWAY
+  LIMITED
+}
+
+// ============================================
+// JOB APPLICATIONS
+// ============================================
+
+model JobApplication {
+  id             String            @id @default(cuid())
+  jobId          String
+  professionalId String
+  userId         String
+  status         ApplicationStatus @default(PENDING)
+  proposedRate   Float?
+  coverLetter    String?
+  appliedAt      DateTime          @default(now())
+  respondedAt    DateTime?
+
+  job            TreeJob           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  professional   TreeProfessional  @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, professionalId])
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  HIRED
+}
+
+// ============================================
+// EQUIPMENT MARKETPLACE
+// ============================================
+
+model Equipment {
+  id                String              @id @default(cuid())
+  name              String
+  category          EquipmentCategory
+  brand             String
+  model             String
+  year              Int
+  condition         EquipmentCondition
+  images            String[]
+  price             Float?
+  dailyRentalRate   Float?
+  weeklyRentalRate  Float?
+  monthlyRentalRate Float?
+  forSale           Boolean             @default(false)
+  forRent           Boolean             @default(false)
+  location          String
+  description       String?
+  specifications    Json?
+  available         Boolean             @default(true)
+  
+  // Owner (either professional or company)
+  professionalId    String?
+  companyId         String?
+  
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  professional      TreeProfessional?   @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  company           TreeCompany?        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([category, condition])
+  @@index([forSale, forRent])
+}
+
+enum EquipmentCategory {
+  CLIMBING_GEAR
+  CHAINSAWS
+  CHIPPERS
+  STUMP_GRINDERS
+  BUCKET_TRUCKS
+  CRANES
+  TRUCKS
+  TRAILERS
+  SAFETY_EQUIPMENT
+  DIAGNOSTIC_TOOLS
+  ROPES_RIGGING
+}
+
+enum EquipmentCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  NEEDS_REPAIR
+}
+
+// ============================================
+// CERTIFICATIONS & LICENSES
+// ============================================
+
+model Certification {
+  id               String           @id @default(cuid())
+  professionalId   String
+  name             String
+  issuer           String
+  number           String
+  issueDate        DateTime
+  expirationDate   DateTime
+  verified         Boolean          @default(false)
+  documentUrl      String?
+  createdAt        DateTime         @default(now())
+
+  professional     TreeProfessional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+}
+
+model License {
+  id               String      @id @default(cuid())
+  companyId        String
+  type             String
+  number           String
+  state            String
+  issueDate        DateTime
+  expirationDate   DateTime
+  verified         Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+
+  company          TreeCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// PORTFOLIO & WORK EXAMPLES
+// ============================================
+
+model PortfolioItem {
+  id               String           @id @default(cuid())
+  professionalId   String
+  title            String
+  description      String
+  images           String[]
+  beforeImages     String[]
+  afterImages      String[]
+  jobType          TreeSkillType
+  location         String
+  completedAt      DateTime
+  client           String?
+  featured         Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+
+  professional     TreeProfessional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// REVIEWS & RATINGS
+// ============================================
+
+model Review {
+  id                   String            @id @default(cuid())
+  jobId                String?
+  rating               Float
+  comment              String
+  qualityRating        Float
+  communicationRating  Float
+  timelinessRating     Float
+  safetyRating         Float
+  professionalismRating Float
+  helpful              Int               @default(0)
+  verified             Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+
+  // Reviewer (who gave the review)
+  reviewerUserId       String?
+  reviewerProfessionalId String?
+  reviewerCompanyId    String?
+
+  // Reviewee (who received the review)
+  revieweeUserId       String?
+  revieweeProfessionalId String?
+  revieweeCompanyId    String?
+
+  job                  TreeJob?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  reviewerUser         User?             @relation("ReviewerUser", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  reviewerProfessional TreeProfessional? @relation("ReviewerProfessional", fields: [reviewerProfessionalId], references: [id], onDelete: SetNull)
+  reviewerCompany      TreeCompany?      @relation("ReviewerCompany", fields: [reviewerCompanyId], references: [id], onDelete: SetNull)
+  revieweeUser         User?             @relation("RevieweeUser", fields: [revieweeUserId], references: [id], onDelete: SetNull)
+  revieweeProfessional TreeProfessional? @relation("RevieweeProfessional", fields: [revieweeProfessionalId], references: [id], onDelete: SetNull)
+  revieweeCompany      TreeCompany?      @relation("RevieweeCompany", fields: [revieweeCompanyId], references: [id], onDelete: SetNull)
+}
+
+// ============================================
+// MESSAGING & COMMUNICATION
+// ============================================
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String
+  type           MessageType @default(TEXT)
+  read           Boolean     @default(false)
+  sentAt         DateTime    @default(now())
+
+  sender         User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, sentAt])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  LOCATION
+}
+
+// ============================================
+// STORM RESPONSE & EMERGENCY
+// ============================================
+
+model StormAlert {
+  id              String          @id @default(cuid())
+  title           String
+  description     String
+  severity        StormSeverity
+  affectedAreas   String[]
+  startTime       DateTime
+  endTime         DateTime?
+  urgentNeeds     TreeSkillType[]
+  payMultiplier   Float           @default(1.5)
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+
+  @@index([active, severity])
+}
+
+enum StormSeverity {
+  WATCH
+  WARNING
+  EMERGENCY
+}
+
+// ============================================
+// LEAD GENERATION & MARKETING
+// ============================================
+
+model Lead {
+  id                String        @id @default(cuid())
+  type              LeadType
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  customerAddress   String
+  preferredContact  ContactMethod @default(EMAIL)
+  jobDescription    String
+  urgency           JobUrgency    @default(NORMAL)
+  budgetMin         Float?
+  budgetMax         Float?
+  preferredDate     DateTime?
+  status            LeadStatus    @default(NEW)
+  notes             String[]
+  assignedCompanyId String?
+  createdById       String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  assignedCompany   TreeCompany?  @relation(fields: [assignedCompanyId], references: [id], onDelete: SetNull)
+  createdBy         User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([status, urgency])
+  @@index([type, createdAt])
+}
+
+enum LeadType {
+  RESIDENTIAL
+  COMMERCIAL
+  MUNICIPAL
+  STORM
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  WON
+  LOST
+  CANCELLED
+}
+
+enum ContactMethod {
+  EMAIL
+  PHONE
+  TEXT
+}
